@@ -1,0 +1,83 @@
+{
+  "seed": 42,
+  "duration_s": 90,
+  "bandwidth_mbps": 8,
+  "nodes": [
+    {
+      "name": "ground",
+      "role": "ground",
+      "ip": "192.168.50.10",
+      "ssh": "192.168.50.10"
+    },
+    {
+      "name": "sat01",
+      "role": "satellite",
+      "ip": "192.168.50.11",
+      "ssh": "192.168.50.11"
+    },
+    {
+      "name": "sat02",
+      "role": "satellite",
+      "ip": "192.168.50.12",
+      "ssh": "192.168.50.12"
+    },
+    {
+      "name": "sat03",
+      "role": "satellite",
+      "ip": "192.168.50.13",
+      "ssh": "192.168.50.13"
+    }
+  ],
+  "contacts": [
+    {
+      "a": "*ground",
+      "b": "*satellite",
+      "start_s": 0,
+      "duration_s": 10,
+      "period_s": 40
+    },
+    {
+      "a": "*satellite",
+      "b": "*satellite",
+      "start_s": 12,
+      "duration_s": 23,
+      "period_s": 40
+    }
+  ],
+  "acquisitions": [
+    {
+      "id": "image-01",
+      "source": "sat01",
+      "size_mib": 8,
+      "seed": 101
+    },
+    {
+      "id": "image-02",
+      "source": "sat02",
+      "size_mib": 8,
+      "seed": 102
+    }
+  ],
+  "jobs": [
+    {
+      "id": "task-01",
+      "requester": "sat03",
+      "inputs": [
+        "image-01"
+      ],
+      "release_s": 12,
+      "deadline_s": 80,
+      "rounds": 8
+    },
+    {
+      "id": "task-02",
+      "requester": "sat03",
+      "inputs": [
+        "image-02"
+      ],
+      "release_s": 14,
+      "deadline_s": 80,
+      "rounds": 8
+    }
+  ]
+}

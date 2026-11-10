@@ -1,0 +1,8 @@
+/orbitald
+/bin/
+/.gocache/
+/.gomodcache/
+__pycache__/
+*.py[cod]
+.idea/
+.vscode/

@@ -1,0 +1,228 @@
+{
+  "seed": 42,
+  "duration_s": 300,
+  "bandwidth_mbps": 8,
+  "nodes": [
+    {
+      "name": "nuc-1",
+      "ip": "192.168.10.156",
+      "ssh": "192.168.10.156",
+      "arch": "amd64",
+      "role": "ground"
+    },
+    {
+      "name": "nuc-2",
+      "ip": "192.168.10.133",
+      "ssh": "192.168.10.133",
+      "arch": "amd64",
+      "role": "satellite"
+    },
+    {
+      "name": "orin-1",
+      "ip": "192.168.10.136",
+      "ssh": "192.168.10.136",
+      "arch": "arm64",
+      "role": "satellite"
+    },
+    {
+      "name": "orin-2",
+      "ip": "192.168.10.152",
+      "ssh": "192.168.10.152",
+      "arch": "arm64",
+      "role": "satellite"
+    },
+    {
+      "name": "rpi-1",
+      "ip": "192.168.10.199",
+      "ssh": "192.168.10.199",
+      "arch": "arm64",
+      "role": "satellite"
+    },
+    {
+      "name": "rpi-2",
+      "ip": "192.168.10.177",
+      "ssh": "192.168.10.177",
+      "arch": "arm64",
+      "role": "satellite"
+    },
+    {
+      "name": "rpi-3",
+      "ip": "192.168.10.107",
+      "ssh": "192.168.10.107",
+      "arch": "arm64",
+      "role": "satellite"
+    },
+    {
+      "name": "rpi-4",
+      "ip": "192.168.10.127",
+      "ssh": "192.168.10.127",
+      "arch": "arm64",
+      "role": "satellite"
+    },
+    {
+      "name": "rpi-5",
+      "ip": "192.168.10.214",
+      "ssh": "192.168.10.214",
+      "arch": "arm64",
+      "role": "satellite"
+    },
+    {
+      "name": "rpi-6",
+      "ip": "192.168.10.226",
+      "ssh": "192.168.10.226",
+      "arch": "arm64",
+      "role": "satellite"
+    },
+    {
+      "name": "rpi-7",
+      "ip": "192.168.10.159",
+      "ssh": "192.168.10.159",
+      "arch": "arm64",
+      "role": "satellite"
+    },
+    {
+      "name": "rpi-8",
+      "ip": "192.168.10.111",
+      "ssh": "192.168.10.111",
+      "arch": "arm64",
+      "role": "satellite"
+    },
+    {
+      "name": "rpi-9",
+      "ip": "192.168.10.106",
+      "ssh": "192.168.10.106",
+      "arch": "arm",
+      "role": "satellite"
+    },
+    {
+      "name": "rpi-10",
+      "ip": "192.168.10.196",
+      "ssh": "192.168.10.196",
+      "arch": "arm64",
+      "role": "satellite"
+    },
+    {
+      "name": "rpi-11",
+      "ip": "192.168.10.243",
+      "ssh": "192.168.10.243",
+      "arch": "arm64",
+      "role": "satellite"
+    }
+  ],
+  "contacts": [
+    {
+      "a": "*ground",
+      "b": "*satellite",
+      "start_s": 0,
+      "duration_s": 20,
+      "period_s": 120
+    },
+    {
+      "a": "*satellite",
+      "b": "*satellite",
+      "start_s": 25,
+      "duration_s": 60,
+      "period_s": 120
+    }
+  ],
+  "acquisitions": [
+    {
+      "id": "image-01",
+      "source": "rpi-1",
+      "size_mib": 8,
+      "seed": 101
+    },
+    {
+      "id": "image-02",
+      "source": "rpi-2",
+      "size_mib": 8,
+      "seed": 102
+    },
+    {
+      "id": "image-03",
+      "source": "rpi-3",
+      "size_mib": 8,
+      "seed": 103
+    },
+    {
+      "id": "image-04",
+      "source": "rpi-4",
+      "size_mib": 8,
+      "seed": 104
+    },
+    {
+      "id": "image-05",
+      "source": "rpi-5",
+      "size_mib": 8,
+      "seed": 105
+    },
+    {
+      "id": "image-06",
+      "source": "rpi-6",
+      "size_mib": 8,
+      "seed": 106
+    }
+  ],
+  "jobs": [
+    {
+      "id": "task-01",
+      "requester": "nuc-2",
+      "inputs": [
+        "image-01"
+      ],
+      "release_s": 25,
+      "deadline_s": 290,
+      "rounds": 8
+    },
+    {
+      "id": "task-02",
+      "requester": "nuc-2",
+      "inputs": [
+        "image-02"
+      ],
+      "release_s": 27,
+      "deadline_s": 290,
+      "rounds": 8
+    },
+    {
+      "id": "task-03",
+      "requester": "nuc-2",
+      "inputs": [
+        "image-03"
+      ],
+      "release_s": 29,
+      "deadline_s": 290,
+      "rounds": 8
+    },
+    {
+      "id": "task-04",
+      "requester": "nuc-2",
+      "inputs": [
+        "image-04"
+      ],
+      "release_s": 31,
+      "deadline_s": 290,
+      "rounds": 8
+    },
+    {
+      "id": "task-05",
+      "requester": "nuc-2",
+      "inputs": [
+        "image-05"
+      ],
+      "release_s": 33,
+      "deadline_s": 290,
+      "rounds": 8
+    },
+    {
+      "id": "task-06",
+      "requester": "nuc-2",
+      "inputs": [
+        "image-06"
+      ],
+      "release_s": 35,
+      "deadline_s": 290,
+      "rounds": 8
+    }
+  ]
+}

@@ -1,0 +1,213 @@
+{
+  "seed": 42,
+  "duration_s": 300,
+  "bandwidth_mbps": 8,
+  "nodes": [
+    {
+      "name": "ground",
+      "role": "ground",
+      "ip": "192.168.50.10",
+      "ssh": "192.168.50.10"
+    },
+    {
+      "name": "sat01",
+      "role": "satellite",
+      "ip": "192.168.50.11",
+      "ssh": "192.168.50.11"
+    },
+    {
+      "name": "sat02",
+      "role": "satellite",
+      "ip": "192.168.50.12",
+      "ssh": "192.168.50.12"
+    },
+    {
+      "name": "sat03",
+      "role": "satellite",
+      "ip": "192.168.50.13",
+      "ssh": "192.168.50.13"
+    },
+    {
+      "name": "sat04",
+      "role": "satellite",
+      "ip": "192.168.50.14",
+      "ssh": "192.168.50.14"
+    },
+    {
+      "name": "sat05",
+      "role": "satellite",
+      "ip": "192.168.50.15",
+      "ssh": "192.168.50.15"
+    },
+    {
+      "name": "sat06",
+      "role": "satellite",
+      "ip": "192.168.50.16",
+      "ssh": "192.168.50.16"
+    },
+    {
+      "name": "sat07",
+      "role": "satellite",
+      "ip": "192.168.50.17",
+      "ssh": "192.168.50.17"
+    },
+    {
+      "name": "sat08",
+      "role": "satellite",
+      "ip": "192.168.50.18",
+      "ssh": "192.168.50.18"
+    },
+    {
+      "name": "sat09",
+      "role": "satellite",
+      "ip": "192.168.50.19",
+      "ssh": "192.168.50.19"
+    },
+    {
+      "name": "sat10",
+      "role": "satellite",
+      "ip": "192.168.50.20",
+      "ssh": "192.168.50.20"
+    },
+    {
+      "name": "sat11",
+      "role": "satellite",
+      "ip": "192.168.50.21",
+      "ssh": "192.168.50.21"
+    },
+    {
+      "name": "sat12",
+      "role": "satellite",
+      "ip": "192.168.50.22",
+      "ssh": "192.168.50.22"
+    },
+    {
+      "name": "sat13",
+      "role": "satellite",
+      "ip": "192.168.50.23",
+      "ssh": "192.168.50.23"
+    },
+    {
+      "name": "sat14",
+      "role": "satellite",
+      "ip": "192.168.50.24",
+      "ssh": "192.168.50.24"
+    }
+  ],
+  "contacts": [
+    {
+      "a": "*ground",
+      "b": "*satellite",
+      "start_s": 0,
+      "duration_s": 20,
+      "period_s": 120
+    },
+    {
+      "a": "*satellite",
+      "b": "*satellite",
+      "start_s": 25,
+      "duration_s": 60,
+      "period_s": 120
+    }
+  ],
+  "acquisitions": [
+    {
+      "id": "image-01",
+      "source": "sat01",
+      "size_mib": 8,
+      "seed": 101
+    },
+    {
+      "id": "image-02",
+      "source": "sat02",
+      "size_mib": 8,
+      "seed": 102
+    },
+    {
+      "id": "image-03",
+      "source": "sat03",
+      "size_mib": 8,
+      "seed": 103
+    },
+    {
+      "id": "image-04",
+      "source": "sat04",
+      "size_mib": 8,
+      "seed": 104
+    },
+    {
+      "id": "image-05",
+      "source": "sat05",
+      "size_mib": 8,
+      "seed": 105
+    },
+    {
+      "id": "image-06",
+      "source": "sat06",
+      "size_mib": 8,
+      "seed": 106
+    }
+  ],
+  "jobs": [
+    {
+      "id": "task-01",
+      "requester": "sat14",
+      "inputs": [
+        "image-01"
+      ],
+      "release_s": 25,
+      "deadline_s": 290,
+      "rounds": 8
+    },
+    {
+      "id": "task-02",
+      "requester": "sat14",
+      "inputs": [
+        "image-02"
+      ],
+      "release_s": 27,
+      "deadline_s": 290,
+      "rounds": 8
+    },
+    {
+      "id": "task-03",
+      "requester": "sat14",
+      "inputs": [
+        "image-03"
+      ],
+      "release_s": 29,
+      "deadline_s": 290,
+      "rounds": 8
+    },
+    {
+      "id": "task-04",
+      "requester": "sat14",
+      "inputs": [
+        "image-04"
+      ],
+      "release_s": 31,
+      "deadline_s": 290,
+      "rounds": 8
+    },
+    {
+      "id": "task-05",
+      "requester": "sat14",
+      "inputs": [
+        "image-05"
+      ],
+      "release_s": 33,
+      "deadline_s": 290,
+      "rounds": 8
+    },
+    {
+      "id": "task-06",
+      "requester": "sat14",
+      "inputs": [
+        "image-06"
+      ],
+      "release_s": 35,
+      "deadline_s": 290,
+      "rounds": 8
+    }
+  ]
+}
