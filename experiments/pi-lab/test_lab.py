@@ -90,6 +90,30 @@ class LabTests(unittest.TestCase):
             self.assertEqual(scp[:3], ["sshpass", "-e", "scp"])
             self.assertNotIn("test-password!#", json.dumps(lab.public_config(self.cfg)))
 
+    def test_setup_preflight_reports_nodes_without_installing(self):
+        args = SimpleNamespace(config="unused", binaries="./pi-bin", arch="auto", bootstrap=False)
+
+        def remote(node, command, **kwargs):
+            if command == ["sudo", "-n", "true"] and node == self.a:
+                raise lab.subprocess.CalledProcessError(1, command, stderr="sudo: a password is required")
+            if command == ["sudo", "-n", "docker", "info"]:
+                raise lab.subprocess.CalledProcessError(1, command, stderr="sudo: docker: command not found")
+            return SimpleNamespace(stdout="aarch64\n")
+
+        with mock.patch.object(lab, "read_json", return_value=self.cfg), \
+             mock.patch.object(lab, "binary_files", return_value=[]), \
+             mock.patch.object(lab, "ssh", side_effect=remote) as ssh, \
+             mock.patch.object(lab, "upload") as upload:
+            with self.assertRaises(RuntimeError) as caught:
+                lab.setup(args)
+        message = str(caught.exception)
+        self.assertIn(self.a["name"], message)
+        self.assertIn("password is required", message)
+        self.assertIn("docker: command not found", message)
+        self.assertIn("no installation started", message)
+        upload.assert_not_called()
+        self.assertFalse(any("mktemp" in call.args[1] for call in ssh.call_args_list))
+
     def test_key_login_still_works_without_password(self):
         with mock.patch.dict(lab.os.environ, {"RELAYD_SSH_USER": "tester"}, clear=True):
             command, _ = lab.connection(self.cfg["nodes"][0])

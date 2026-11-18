@@ -571,14 +571,45 @@ def setup(args):
     directory = Path(__file__).resolve().parent
     binaries = Path(args.binaries).resolve()
 
-    def install(node):
-        ssh(node, ["sudo", "-n", "true"])
+    def preflight(node):
+        try:
+            ssh(node, ["sudo", "-n", "true"], capture_output=True, text=True)
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or "").strip()
+            raise RuntimeError(f"{node['name']}: SSH/sudo preflight failed: {detail}. "
+                               "Verify SSH access and passwordless sudo for the SSH user; "
+                               "RELAYD_SSH_PASSWORD only authenticates SSH.") from exc
         host_arch = ssh(node, ["uname", "-m"], capture_output=True, text=True).stdout.strip()
         arch = HOST_ARCHES.get(host_arch)
         requested = node.get("arch", arch) if args.arch == "auto" else args.arch
         if arch is None or arch != requested:
             raise ValueError(f"{node['name']}: architecture {host_arch} incompatible with {requested}")
         files = binary_files(binaries, arch)
+        if not args.bootstrap:
+            for command in (["python3", "--version"], ["docker", "info"], ["ctr", "version"]):
+                try:
+                    ssh(node, ["sudo", "-n", *command], capture_output=True, text=True)
+                except subprocess.CalledProcessError as exc:
+                    detail = (exc.stderr or exc.stdout or "").strip()
+                    raise RuntimeError(f"{node['name']}: {command[0]} preflight failed: {detail}. "
+                                       "Install/start the runtime dependencies, or use --bootstrap "
+                                       "on dedicated Debian/Ubuntu test nodes.") from exc
+        return files
+
+    # Check every selected node before copying files or building any images.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        checks = [(node, pool.submit(preflight, node)) for node in cfg["nodes"]]
+        prepared, errors = {}, []
+        for node, future in checks:
+            try:
+                prepared[node["name"]] = future.result()
+            except (ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
+                errors.append(f"{node['name']}: {exc}")
+        if errors:
+            raise RuntimeError("setup preflight failed; no installation started:\n" + "\n".join(errors))
+
+    def install(node):
+        files = prepared[node["name"]]
         if args.bootstrap:
             ssh(node, ["sudo", "-n", "apt-get", "update"])
             ssh(node, ["sudo", "-n", "apt-get", "install", "-y", "python3", "containerd", "docker.io"])

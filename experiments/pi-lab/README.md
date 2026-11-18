@@ -184,6 +184,24 @@ command-line arguments. Password fields in JSON are rejected. Credentials are
 not written to uploaded manifests, results, or example configurations.
 Noninteractive sudo (`sudo -n`) is still required on the nodes.
 
+If setup reports `sudo: a password is required`, the SSH user cannot run
+passwordless sudo on that node. The SSH password does not authenticate sudo.
+Log into each failing node interactively and have its administrator configure
+the required sudo access. On dedicated lab machines, an administrator can use
+`sudo visudo -f /etc/sudoers.d/relayd-lab` to add
+`leo ALL=(ALL) NOPASSWD: ALL` (replace `leo` with the SSH username). This grants
+full root access to that account; use it only where that is appropriate.
+Verify from the workstation with `ssh leo@NODE 'sudo -n true'`.
+
+If setup reports `sudo: docker: command not found`, Docker is missing from that
+node's sudo command path. On dedicated Debian/Ubuntu lab nodes, rerun setup with
+`--bootstrap` after fixing sudo access to install and enable the dependencies.
+For shared machines such as the Orins, have the administrator install or repair
+the existing runtime instead. Setup checks all selected nodes before installation
+and reports the failing node names; without `--bootstrap`, it also checks Python,
+Docker daemon access, and containerd connectivity. Setup can be rerun after these
+issues are fixed.
+
 ```sh
 unset RELAYD_SSH_PASSWORD  # Use SSH keys instead of a password.
 ```
