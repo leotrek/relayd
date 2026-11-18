@@ -21,7 +21,8 @@ class LabTests(unittest.TestCase):
         self.ground, self.a, self.b, self.requester = self.cfg["nodes"]
 
     def test_examples_validate(self):
-        for name in ("cluster.example.json", "smoke.example.json", "cluster.hardware.example.json"):
+        for name in ("cluster.example.json", "smoke.example.json", "cluster.hardware.example.json",
+                     "cluster.hardware.5.example.json", "cluster.hardware.10.example.json"):
             lab.validate(lab.read_json(Path(__file__).with_name(name)))
 
     def test_hardware_inventory_has_exactly_fifteen_supported_nodes(self):
@@ -35,6 +36,27 @@ class LabTests(unittest.TestCase):
         self.assertNotIn("opi-1", nodes)
         self.assertNotIn("opi-2", nodes)
         self.assertNotIn("orin-3", nodes)
+
+    def test_cluster_sizes_keep_workload_and_nested_inventory(self):
+        base = lab.read_json(Path(__file__).with_name("cluster.hardware.example.json"))
+        previous = set()
+        for size, name in ((5, "cluster.hardware.5.example.json"),
+                           (10, "cluster.hardware.10.example.json"),
+                           (15, "cluster.hardware.example.json")):
+            cfg = lab.validate(lab.read_json(Path(__file__).with_name(name)))
+            names = {n["name"] for n in cfg["nodes"]}
+            self.assertEqual(len(names), size)
+            self.assertTrue(previous <= names)
+            self.assertEqual(cfg["jobs"], base["jobs"])
+            self.assertEqual(cfg["contacts"], base["contacts"])
+            self.assertEqual(cfg["duration_s"], base["duration_s"])
+            self.assertEqual(cfg["bandwidth_mbps"], base["bandwidth_mbps"])
+            self.assertEqual([{k: v for k, v in a.items() if k != "source"}
+                              for a in cfg["acquisitions"]],
+                             [{k: v for k, v in a.items() if k != "source"}
+                              for a in base["acquisitions"]])
+            self.assertNotIn("nuc-2", {a["source"] for a in cfg["acquisitions"]})
+            previous = names
 
     def test_mixed_build_and_binary_selection(self):
         with tempfile.TemporaryDirectory() as directory:

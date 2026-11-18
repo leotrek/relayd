@@ -67,6 +67,94 @@ runtime, and repeat a Pi-only subset to separate hardware effects from placement
 The current agent checks runtime health and input presence, not CPU speed or GPU
 capability; this workload does not use the Orin GPUs.
 
+## Run with 5, 10, or 15 total nodes
+
+The hardware presets below count the ground node in the total. They are nested
+subsets of the same inventory and use the same six acquisitions, six jobs,
+300-second duration, 8 Mbit/s per-connection limit, and contact schedule.
+
+| Total nodes | Ground | Requester | Other satellite nodes | Preset |
+|---|---|---|---|---|
+| 5 | nuc-1 | nuc-2 | rpi-1 through rpi-3 | `cluster.hardware.5.example.json` |
+| 10 | nuc-1 | nuc-2 | rpi-1 through rpi-6, orin-1, orin-2 | `cluster.hardware.10.example.json` |
+| 15 | nuc-1 | nuc-2 | rpi-1 through rpi-11, orin-1, orin-2 | `cluster.hardware.example.json` |
+
+These are the existing mixed-hardware cluster addresses, not five or ten Pi-only
+nodes. For a Pi-only deployment, replace node addresses, names, architectures,
+and references consistently. For the five-node preset, the six acquisitions are
+spread across rpi-1 through rpi-3 (two per source); the larger presets retain one
+acquisition on each of rpi-1 through rpi-6. Input bytes and jobs stay constant,
+but source distribution and hardware composition change. Report these differences
+when comparing sizes; this is not a controlled node-count-only scaling study.
+
+Run the following from `relayd/experiments/pi-lab` on the workstation:
+
+1. Prepare SSH access, noninteractive `sudo -n`, synchronized clocks, and the
+   runtime dependencies described above. Export `RELAYD_SSH_USER`; optionally set
+   `RELAYD_SSH_PASSWORD` as described below. Inspect and update the preset IPs.
+2. Choose a preset and validate its plan:
+
+   ```sh
+   # Change 5 to 10 for the ten-node preset.
+   cp cluster.hardware.5.example.json cluster.json
+   python3 lab.py validate --config cluster.json
+   python3 lab.py plan --config cluster.json
+   ```
+
+3. Prepare Linux binaries from each independent Git repository. All nodes in the
+   five- and ten-node presets use arm64 or amd64. From the shared workspace root,
+   run these commands once per required architecture, replacing `arm64` with
+   `amd64` for the second build:
+
+   ```sh
+   (cd fluxd && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 make build)
+   (cd orbitald && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 make build)
+   (cd relayd && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 make build)
+   mkdir -p relayd/experiments/pi-lab/pi-bin/arm64
+   cp fluxd/bin/fluxd fluxd/bin/fluximport orbitald/bin/orbitald relayd/bin/relayd \
+     relayd/experiments/pi-lab/pi-bin/arm64/
+   ```
+
+   Copy each architecture's binaries before building the next architecture,
+   because each project's `bin/` paths are reused. The fifteen-node preset also
+   needs `GOARCH=arm GOARM=7` binaries under `pi-bin/arm` for rpi-9. Each project's
+   build remains independent; do not use the optional combined `lab.py build`
+   helper if you want to keep build invocations separate.
+
+4. Back in `relayd/experiments/pi-lab`, provision only the selected nodes:
+
+   ```sh
+   python3 lab.py setup --config cluster.json --binaries ./pi-bin
+   ```
+
+   Add `--bootstrap` only if the selected dedicated nodes need OS dependencies.
+   The harness installs its own experiment files, builds/imports the workload
+   image on each selected node, and starts isolated daemons during the run. You
+   do not need to enable the three production systemd services for this test.
+
+5. First check relayd alone, then compare all four policies with a new run ID:
+
+   ```sh
+   python3 lab.py run --config cluster.json --modes relayd --run-id nodes5-check-01
+   python3 lab.py run --config cluster.json --run-id nodes5-study-01
+   cat results/nodes5-study-01/summary.csv
+   ```
+
+   Use `nodes10-check-01` and `nodes10-study-01` for the ten-node preset.
+   Each policy lasts 300 seconds plus the default 60-second preparation lead;
+   four policies take roughly 24 minutes plus provisioning and collection.
+   Existing run directories are never overwritten; use a fresh run ID each time.
+
+6. For ten nodes, repeat from step 2 using
+   `cluster.hardware.10.example.json`. For fifteen nodes, use
+   `cluster.hardware.example.json` and prepare the extra ARMv7 binaries.
+   Preserve each run's manifest and inspect deadline success together with
+   latency and transferred bytes. Full output definitions are below.
+
+The presets retain all-to-all satellite contact windows. They do not impose a
+maximum number of active ISLs; changing cluster size also changes the number of
+available neighbor links.
+
 ## 1. Configure the Pis
 
 ```sh
