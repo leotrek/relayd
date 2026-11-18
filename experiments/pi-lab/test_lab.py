@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import socket
+import shutil
 import threading
 import unittest
 from types import SimpleNamespace
@@ -84,6 +85,83 @@ class LabTests(unittest.TestCase):
             (root / "bin" / "arm" / ".target-arch").write_text("arm64")
             with self.assertRaises(ValueError):
                 lab.binary_files(root / "bin", "arm")
+
+    def test_install_sync_compares_content_and_recovers_failed_image_import(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.mkdir()
+            for name in ("relayd", "fluxd", "fluximport", "orbitald",
+                         "lab.py", "workload.py", "Dockerfile"):
+                (source / name).write_text(name)
+            binaries = [source / n for n in ("relayd", "fluxd", "fluximport", "orbitald")]
+            installed = root / "installed"
+            fail_import = False
+            missing_image = False
+
+            def remote(node, command, **kwargs):
+                if command[:2] == ["sudo", "-n"]:
+                    command = command[2:]
+                if command[0] == "mktemp":
+                    return SimpleNamespace(stdout=tempfile.mkdtemp(dir=root))
+                if command[:2] == ["mkdir", "-p"]:
+                    for path in command[2:]:
+                        Path(path).mkdir(parents=True, exist_ok=True)
+                elif command[0] == "install":
+                    shutil.copyfile(command[3], command[4])
+                    Path(command[4]).chmod(int(command[2], 8))
+                elif command[:2] == ["rm", "-rf"]:
+                    shutil.rmtree(command[-1])
+                elif command[:2] == ["python3", "-c"]:
+                    if "subprocess" in command[2]:
+                        if fail_import or (missing_image and "docker =" in command[2]):
+                            raise lab.subprocess.CalledProcessError(1, command)
+                    else:
+                        return lab.subprocess.run([lab.sys.executable, *command[1:]],
+                                                  check=True, capture_output=True, text=True)
+                return SimpleNamespace(stdout="")
+
+            def upload(node, files, destination):
+                for path in files:
+                    shutil.copyfile(path, Path(destination) / path.name)
+
+            with mock.patch.object(lab, "ROOT", str(installed)), \
+                 mock.patch.object(lab, "ssh", side_effect=remote) as ssh, \
+                 mock.patch.object(lab, "upload", side_effect=upload) as uploads, \
+                 mock.patch("sys.stdout", new=io.StringIO()):
+                def sync():
+                    ssh.reset_mock()
+                    uploads.reset_mock()
+                    lab.sync_installation(self.ground, binaries, source)
+
+                def builds():
+                    return [c for c in ssh.call_args_list if "build" in c.args[1]]
+
+                sync()  # Missing installation: copy everything and build/import.
+                self.assertEqual(len(uploads.call_args.args[1]), 7)
+                self.assertEqual(len(builds()), 1)
+                sync()  # Identical content: no upload or image build.
+                uploads.assert_not_called()
+                self.assertEqual(builds(), [])
+                (source / "lab.py").write_text("new script")
+                sync()
+                self.assertEqual(uploads.call_args.args[1], [source / "lab.py"])
+                self.assertEqual(builds(), [])
+                (installed / "image/workload.py").write_text("corrupt")
+                sync()  # Detect remote corruption even though the stamp matches.
+                self.assertEqual(len(builds()), 1)
+                (source / "Dockerfile").write_text("new image")
+                fail_import = True
+                with self.assertRaises(lab.subprocess.CalledProcessError):
+                    sync()
+                fail_import = False
+                sync()  # Files match now, but failed import must still be retried.
+                uploads.assert_not_called()
+                self.assertEqual(len(builds()), 1)
+                missing_image = True
+                sync()  # Recover deleted runtime images without uploading files.
+                uploads.assert_not_called()
+                self.assertEqual(len(builds()), 1)
 
     def test_password_and_username_come_from_environment(self):
         with mock.patch.dict(lab.os.environ, {"RELAYD_SSH_USER": "tester",

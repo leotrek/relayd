@@ -128,6 +128,13 @@ Run the following from `relayd/experiments/pi-lab` on the workstation:
    ```
 
    Add `--bootstrap` only if the selected dedicated nodes need OS dependencies.
+   Setup compares SHA-256 hashes and permissions against each node's installed
+   files and uploads only changed or missing files. Rerun setup after updating
+   `lab.py` to deploy it to every node. Unchanged workload images are reused;
+   changed image inputs, missing runtime images, or an incomplete previous
+   build/import trigger a rebuild and import. The first setup after upgrading
+   to this comparison logic rebuilds the image once to record a successful install.
+   Experiment data is preserved.
    The harness installs its own experiment files, builds/imports the workload
    image on each selected node, and starts isolated daemons during the run. You
    do not need to enable the three production systemd services for this test.

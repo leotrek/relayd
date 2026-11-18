@@ -574,6 +574,77 @@ def binary_files(root, arch):
     return files
 
 
+def sync_installation(node, binaries, directory):
+    """Compare actual installed content; update only changed or missing files."""
+    sources = [(p, ROOT + "/bin/" + p.name, 0o755) for p in binaries]
+    sources += [(directory / "lab.py", ROOT + "/lab.py", 0o644)]
+    sources += [(directory / name, ROOT + "/image/" + name, 0o644)
+                for name in ("workload.py", "Dockerfile")]
+    desired = {target: hashlib.sha256(source.read_bytes()).hexdigest()
+               for source, target, mode in sources}
+    image_hash = hashlib.sha256(json.dumps(
+        {target: desired[target] for _, target, _ in sources if "/image/" in target},
+        sort_keys=True).encode()).hexdigest()
+    stamp = ROOT + "/image/.installed-hash"
+    probe = '''import hashlib,json,sys
+from pathlib import Path
+result = {}
+for name in json.loads(sys.argv[1]):
+    p = Path(name)
+    result[name] = ({'hash': hashlib.sha256(p.read_bytes()).hexdigest(),
+                     'mode': p.stat().st_mode & 0o777} if p.is_file() else None)
+print(json.dumps(result))
+'''
+    state = json.loads(ssh(node, ["sudo", "-n", "python3", "-c", probe,
+                                  json.dumps(list(desired) + [stamp])],
+                           capture_output=True, text=True).stdout)
+    changed = [(source, target, mode) for source, target, mode in sources
+               if state[target] != {"hash": desired[target], "mode": mode}]
+    stamp_hash = hashlib.sha256(image_hash.encode()).hexdigest()
+    rebuild = (not state[stamp] or state[stamp]["hash"] != stamp_hash or
+               any("/image/" in target for _, target, _ in changed))
+    if not rebuild:
+        # A successful prior install does not guarantee images still exist.
+        check_images = '''import subprocess,sys
+image = sys.argv[1]
+docker = subprocess.run(['docker','image','inspect',image], stdout=subprocess.DEVNULL)
+ctr = subprocess.run(['ctr','--namespace','orbitald','images','list','-q'],
+                     capture_output=True, text=True)
+names = ctr.stdout.splitlines()
+raise SystemExit(bool(docker.returncode or ctr.returncode or
+                      not any(n in names for n in (image, 'docker.io/' + image))))
+'''
+        try:
+            ssh(node, ["sudo", "-n", "python3", "-c", check_images, IMAGE],
+                capture_output=True, text=True)
+        except subprocess.CalledProcessError:
+            rebuild = True
+    if changed:
+        stage = ssh(node, ["mktemp", "-d", "/tmp/relayd-install-XXXXXX"],
+                    capture_output=True, text=True).stdout.strip()
+        try:
+            upload(node, [source for source, _, _ in changed], stage + "/")
+            ssh(node, ["sudo", "-n", "mkdir", "-p", ROOT + "/bin", ROOT + "/image"])
+            for source, target, mode in changed:
+                ssh(node, ["sudo", "-n", "install", "-m", format(mode, "o"),
+                           stage + "/" + source.name, target])
+        finally:
+            ssh(node, ["rm", "-rf", "--", stage])
+    if rebuild:
+        ssh(node, ["sudo", "-n", "docker", "build", "-t", IMAGE, ROOT + "/image"])
+        program = ("import subprocess; p=subprocess.Popen(['docker','save','" + IMAGE + "'],stdout=subprocess.PIPE); "
+                   "q=subprocess.run(['ctr','--namespace','orbitald','images','import','-'],stdin=p.stdout); "
+                   "p.stdout.close(); a=p.wait(); raise SystemExit(a or q.returncode)")
+        ssh(node, ["sudo", "-n", "python3", "-c", program])
+        # Commit only after BOTH building and importing succeeded, so retries recover.
+        ssh(node, ["sudo", "-n", "python3", "-c",
+                   "from pathlib import Path; import sys; p=Path(sys.argv[1]); "
+                   "t=p.with_suffix('.tmp'); t.write_text(sys.argv[2]); t.replace(p)", stamp, image_hash])
+    print(f"{node['name']}: " +
+          (f"updated {len(changed)} file(s)" if changed else "files unchanged") +
+          ("; workload image rebuilt/imported" if rebuild else "; workload image unchanged"), flush=True)
+
+
 def setup(args):
     cfg = validate(read_json(args.config))
     directory = Path(__file__).resolve().parent
@@ -630,24 +701,7 @@ def setup(args):
             ssh(node, ["sudo", "-n", "apt-get", "update"])
             ssh(node, ["sudo", "-n", "apt-get", "install", "-y", "python3", "containerd", "docker.io"])
             ssh(node, ["sudo", "-n", "systemctl", "enable", "--now", "containerd", "docker"])
-        stage = ssh(node, ["mktemp", "-d", "/tmp/relayd-install-XXXXXX"],
-                    capture_output=True, text=True).stdout.strip()
-        try:
-            upload(node, files + [directory / name for name in ("lab.py", "workload.py", "Dockerfile")], stage + "/")
-            ssh(node, ["sudo", "-n", "mkdir", "-p", ROOT + "/bin", ROOT + "/image"])
-            ssh(node, ["sudo", "-n", "cp", *[stage + "/" + p.name for p in files], ROOT + "/bin/"])
-            ssh(node, ["sudo", "-n", "chmod", "+x", *[ROOT + "/bin/" + p.name for p in files]])
-            ssh(node, ["sudo", "-n", "cp", stage + "/lab.py", ROOT + "/lab.py"])
-            ssh(node, ["sudo", "-n", "cp", stage + "/workload.py", stage + "/Dockerfile", ROOT + "/image/"])
-            ssh(node, ["sudo", "-n", "docker", "build", "-t", IMAGE, ROOT + "/image"])
-            # Run the pipeline inside a fixed Python program, avoiding shell interpolation.
-            program = ("import subprocess; p=subprocess.Popen(['docker','save','" + IMAGE + "'],stdout=subprocess.PIPE); "
-                       "q=subprocess.run(['ctr','--namespace','orbitald','images','import','-'],stdin=p.stdout); "
-                       "p.stdout.close(); a=p.wait(); raise SystemExit(a or q.returncode)")
-            ssh(node, ["sudo", "-n", "python3", "-c", program])
-            print(f"{node['name']}: installed", flush=True)
-        finally:
-            ssh(node, ["rm", "-rf", "--", stage])
+        sync_installation(node, files, directory)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(install, cfg["nodes"]))
