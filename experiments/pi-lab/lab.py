@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import random
 import re
+import select
 import shlex
 import shutil
 import signal
@@ -22,6 +23,7 @@ import socket
 import socketserver
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -668,6 +670,51 @@ def plan(cfg):
         print(f"  {c['a']} <-> {c['b']}: start={c['start_s']}s, open={c['duration_s']}s, period={c['period_s']}s")
 
 
+def clock_offset(node):
+    """Measure over an established SSH session, excluding login/startup latency."""
+    prefix, env = connection(node)
+    program = ("import sys,time; print('ready', flush=True)\n"
+               "for line in sys.stdin: print(time.time(), flush=True)\n")
+    command = prefix + [ssh_target(node), shlex.join(["python3", "-u", "-c", program])]
+    with tempfile.TemporaryFile(mode="w+t") as errors:
+        process = subprocess.Popen(command, env=env, stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=errors, text=True, bufsize=1)
+
+        def receive():
+            if not select.select([process.stdout], [], [], 15)[0]:
+                raise RuntimeError(f"{node['name']}: timed out waiting for SSH clock probe")
+            line = process.stdout.readline().strip()
+            if not line:
+                errors.seek(0)
+                detail = errors.read().strip() or "SSH clock probe closed without output"
+                raise RuntimeError(f"{node['name']}: {detail}")
+            return line
+
+        try:
+            if receive() != "ready":
+                raise RuntimeError(f"{node['name']}: unexpected SSH clock probe response")
+            samples = []
+            for _ in range(3):
+                before = time.time()
+                started = time.monotonic()
+                process.stdin.write("time\n")
+                process.stdin.flush()
+                remote = float(receive())
+                elapsed = time.monotonic() - started
+                # Use elapsed monotonic time so local clock adjustments do not inflate RTT.
+                samples.append((elapsed, remote - (before + elapsed / 2)))
+            elapsed, offset = min(samples, key=lambda sample: sample[0])
+            return offset, elapsed
+        finally:
+            process.stdin.close()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            process.stdout.close()
+
+
 def run(args):
     cfg = validate(read_json(args.config))
     if not SAFE.fullmatch(args.run_id):
@@ -681,17 +728,13 @@ def run(args):
     ground = next(n for n in cfg["nodes"] if n["role"] == "ground")
     # Wall clocks drive contacts and container timestamps. Require NTP-synced nodes.
     for node in cfg["nodes"]:
-        before = time.time()
-        clock = float(ssh(node, ["python3", "-c", "import time; print(time.time())"],
-                          capture_output=True, text=True).stdout)
-        after = time.time()
-        offset = clock - (before + after) / 2
+        offset, elapsed = clock_offset(node)
         if abs(offset) > 1:
             raise RuntimeError(
                 f"{node['name']}: estimated clock offset {offset:+.3f}s from the workstation "
-                f"(SSH round trip {after - before:.3f}s); limit is 1 second. "
+                f"(established SSH round trip {elapsed:.3f}s); limit is 1 second. "
                 "Check time synchronization on BOTH the workstation running lab.py and this node. "
-                "Slow SSH authentication can distort this estimate; time zones do not affect it.")
+                "Time zones do not affect this check.")
     manifest = output / "manifest.json"
     modes = args.modes.split(",")
     if not modes or any(mode not in MODES for mode in modes) or len(set(modes)) != len(modes):

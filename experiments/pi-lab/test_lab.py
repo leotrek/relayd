@@ -134,6 +134,22 @@ class LabTests(unittest.TestCase):
                 self.assertIn(expected, str(caught.exception))
                 upload.assert_not_called()
 
+    def test_clock_probe_excludes_slow_ssh_startup(self):
+        popen = lab.subprocess.Popen
+
+        def delayed_local_probe(command, **kwargs):
+            local = lab.shlex.split(command[-1])
+            local[0] = lab.sys.executable
+            local[-1] = "import time; time.sleep(2.2)\n" + local[-1]
+            return popen(local, **kwargs)
+
+        with mock.patch.object(lab, "connection", return_value=(["ssh"], dict(lab.os.environ))), \
+             mock.patch.object(lab, "ssh_target", return_value="test@node"), \
+             mock.patch.object(lab.subprocess, "Popen", side_effect=delayed_local_probe):
+            offset, elapsed = lab.clock_offset(self.ground)
+        self.assertLess(abs(offset), 0.5)
+        self.assertLess(elapsed, 1)
+
     def test_key_login_still_works_without_password(self):
         with mock.patch.dict(lab.os.environ, {"RELAYD_SSH_USER": "tester"}, clear=True):
             command, _ = lab.connection(self.cfg["nodes"][0])
