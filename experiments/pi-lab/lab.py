@@ -685,8 +685,13 @@ def run(args):
         clock = float(ssh(node, ["python3", "-c", "import time; print(time.time())"],
                           capture_output=True, text=True).stdout)
         after = time.time()
-        if abs(clock - (before + after) / 2) > 1:
-            raise RuntimeError(f"{node['name']}: clock differs by >1 second; synchronize clocks")
+        offset = clock - (before + after) / 2
+        if abs(offset) > 1:
+            raise RuntimeError(
+                f"{node['name']}: estimated clock offset {offset:+.3f}s from the workstation "
+                f"(SSH round trip {after - before:.3f}s); limit is 1 second. "
+                "Check time synchronization on BOTH the workstation running lab.py and this node. "
+                "Slow SSH authentication can distort this estimate; time zones do not affect it.")
     manifest = output / "manifest.json"
     modes = args.modes.split(",")
     if not modes or any(mode not in MODES for mode in modes) or len(set(modes)) != len(modes):
