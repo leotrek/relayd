@@ -533,7 +533,13 @@ def upload(node, files, destination):
 
 
 def build(args):
-    workspace = Path(args.workspace).resolve()
+    if args.workspace:
+        workspace = Path(args.workspace).resolve()
+    else:
+        parents = Path(__file__).resolve().parents
+        if len(parents) < 4:
+            raise ValueError("build from an installed copy requires --workspace pointing to the source repositories")
+        workspace = parents[3]
     output = Path(args.output).resolve()
     if args.config:
         cfg = validate(read_json(args.config))
@@ -757,15 +763,35 @@ def run(args):
                 processes.append(subprocess.Popen(prefix + [ssh_target(node), shlex.join(command)],
                                                    env=env, stdout=log, stderr=subprocess.STDOUT))
             end = epoch + cfg["duration_s"] + 30
-            while any(p.poll() is None for p in processes):
-                if any(p.poll() not in (None, 0) for p in processes):
-                    raise RuntimeError(f"{mode}: a node failed; inspect local node logs")
+            while True:
+                statuses = [p.poll() for p in processes]
+                failed = [(node, status) for node, status in zip(cfg["nodes"], statuses)
+                          if status not in (None, 0)]
+                if failed:
+                    details = []
+                    for node, status in failed:
+                        path = output / f"{mode}-{node['name']}.log"
+                        tail = path.read_bytes()[-4096:].decode(errors="replace").strip()
+                        details.append(f"{node['name']} (exit {status}; {path}):\n{tail}")
+                    raise RuntimeError(f"{mode}: node execution failed:\n" + "\n".join(details))
+                if all(status is not None for status in statuses):
+                    break
                 if time.time() > end:
                     raise RuntimeError("nodes exceeded experiment timeout")
                 time.sleep(.5)
         finally:
             # Stop only processes created for this run. Never kill unrelated daemons.
             for node in cfg["nodes"]:
+                # Startup may fail before creating a run directory. Local logs
+                # already contain that failure; do not bury it under tar errors.
+                try:
+                    ssh(node, ["sudo", "-n", "test", "-d",
+                               f"/var/lib/relayd-lab/{args.run_id}/{mode}"],
+                        capture_output=True, text=True)
+                except subprocess.CalledProcessError:
+                    with contextlib.suppress(subprocess.CalledProcessError):
+                        ssh(node, ["rm", "-f", "--", remote_cfg])
+                    continue
                 cleanup = ("import os,signal; from pathlib import Path; "
                            f"p=Path('/var/lib/relayd-lab/{args.run_id}/{mode}/node.pid'); "
                            "pid=int(p.read_text()) if p.exists() else None; "
@@ -830,7 +856,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     build_parser = commands.add_parser("build", help="cross-build the three services and importer")
-    build_parser.add_argument("--workspace", default=str(Path(__file__).resolve().parents[3]))
+    build_parser.add_argument("--workspace", help="directory containing source repositories (defaults to source workspace)")
     build_parser.add_argument("--output", default="./pi-bin")
     build_parser.add_argument("--arch", choices=ARCHES, default="arm64")
     build_parser.add_argument("--config", help="build each architecture in a mixed cluster")

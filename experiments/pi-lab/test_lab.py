@@ -20,6 +20,14 @@ class LabTests(unittest.TestCase):
         self.cfg = lab.read_json(Path(__file__).with_name("smoke.example.json"))
         self.ground, self.a, self.b, self.requester = self.cfg["nodes"]
 
+    def test_installed_script_can_parse_node_command(self):
+        with mock.patch.object(lab, "__file__", "/opt/relayd-lab/lab.py"), \
+             mock.patch.object(lab.sys, "argv", ["lab.py", "node", "--help"]), \
+             mock.patch("sys.stdout", new=io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                lab.main()
+        self.assertEqual(caught.exception.code, 0)
+
     def test_examples_validate(self):
         for name in ("cluster.example.json", "smoke.example.json", "cluster.hardware.example.json",
                      "cluster.hardware.5.example.json", "cluster.hardware.10.example.json"):
