@@ -157,3 +157,78 @@ ambiguity rather than creating duplicate execution after a partition.
 The [Pi contact-window runner](experiments/pi-lab/README.md) provisions one ground
 Pi and satellite Pis, replays intermittent contacts, and compares ground,
 source-local, random and relayd placement with verified ground delivery metrics.
+
+## Install relayd as a Linux service
+
+Each Git repository builds and installs only its own project. This repository
+never builds Fluxd or orbitald. With Go 1.24+:
+
+```sh
+make build
+sudo make install-system
+# Or combine the steps with suitable permissions:
+# make install
+```
+
+This installs `relayd` in `/usr/local/bin`, its unit in `/etc/systemd/system`,
+and `/etc/relayd/service.env`. Existing configuration is preserved; new defaults
+are saved as `.example`. Installation reloads systemd without starting services.
+The unit runs as root to access private input sockets. Review custom units before
+installing, as the unit file is replaced.
+
+Configure each node independently in `/etc/relayd/service.env`:
+
+```ini
+NODE=A
+LISTEN=0.0.0.0:8090
+PEERS=http://192.168.10.199:8090,http://192.168.10.177:8090
+FLUXD_SOCKET=/run/fluxd/fluxd.sock
+ORBITALD_URL=http://127.0.0.1:8080
+INPUT_SOCKET=/run/relayd/inputs.sock
+MAX_BYTES=1073741824
+```
+
+Use a unique node name and the other machines' reachable peer URLs. These are
+systemd environment files; use literal values. Keep the input socket under
+`/run/relayd`, whose directory systemd manages. Port 8090 has no authentication;
+restrict it to trusted peers.
+
+```sh
+sudo systemctl enable --now relayd
+sudo systemctl restart relayd # After configuration changes
+sudo journalctl -u relayd -n 100 --no-pager
+```
+
+### Deploying all three projects
+
+Build and install each from its own Git checkout:
+
+```sh
+(cd ../fluxd && make build && sudo make install-system)
+(cd ../orbitald && make build && sudo make install-system)
+make build
+sudo make install-system
+```
+
+For the full stack, set `FLUXD_SOCKET=/run/relayd/inputs.sock` in
+`/etc/orbitald/service.env`. Relayd continues to use the actual Fluxd socket
+`/run/fluxd/fluxd.sock`. Then enable the services:
+
+```sh
+sudo systemctl enable --now containerd fluxd relayd orbitald
+```
+
+For **orbitald + Fluxd without relayd**, keep orbitald's default
+`FLUXD_SOCKET=/run/fluxd/fluxd.sock` and enable only containerd, fluxd and orbitald.
+For **relayd only**, provision compatible Fluxd/orbitald services separately and
+configure the socket and URL above. For **orbitald only**, use its own installer
+and configure an existing input provider. No installer builds another project.
+
+Install compatible function images on execution nodes separately. Fluxd ingestion
+is configured in `/etc/fluxd/config.json`; installation does not populate data.
+
+Stage relayd files without root or host changes:
+
+```sh
+make install-system DESTDIR=/tmp/relayd-package
+```

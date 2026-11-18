@@ -1,0 +1,22 @@
+[Unit]
+Description=Relayd peer placement and input transfer
+After=fluxd.service network-online.target
+Wants=network-online.target
+
+[Service]
+User=root
+Group=root
+RuntimeDirectory=relayd
+RuntimeDirectoryMode=0700
+StateDirectory=relayd
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/relayd
+EnvironmentFile=/etc/relayd/service.env
+ExecStart=/usr/local/bin/relayd -node ${NODE} -listen ${LISTEN} -peers "${PEERS}" -state-dir /var/lib/relayd -socket ${INPUT_SOCKET} -fluxd-socket ${FLUXD_SOCKET} -orbitald ${ORBITALD_URL} -max-bytes ${MAX_BYTES}
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target
