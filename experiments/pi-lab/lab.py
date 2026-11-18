@@ -575,8 +575,16 @@ def setup(args):
         try:
             ssh(node, ["sudo", "-n", "true"], capture_output=True, text=True)
         except subprocess.CalledProcessError as exc:
-            detail = (exc.stderr or "").strip()
-            raise RuntimeError(f"{node['name']}: SSH/sudo preflight failed: {detail}. "
+            detail = (exc.stderr or "").strip() or (exc.stdout or "").strip()
+            if not detail:
+                detail = "no diagnostic output"
+                if os.environ.get("RELAYD_SSH_PASSWORD"):
+                    detail = {
+                        5: "sshpass: SSH password rejected",
+                        6: "sshpass: unknown SSH host key; connect interactively to verify and accept it",
+                        7: "sshpass: changed SSH host key; verify the node fingerprint before updating known_hosts",
+                    }.get(exc.returncode, detail)
+            raise RuntimeError(f"SSH/sudo preflight failed (exit {exc.returncode}): {detail}. "
                                "Verify SSH access and passwordless sudo for the SSH user; "
                                "RELAYD_SSH_PASSWORD only authenticates SSH.") from exc
         host_arch = ssh(node, ["uname", "-m"], capture_output=True, text=True).stdout.strip()

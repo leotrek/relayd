@@ -114,6 +114,26 @@ class LabTests(unittest.TestCase):
         upload.assert_not_called()
         self.assertFalse(any("mktemp" in call.args[1] for call in ssh.call_args_list))
 
+    def test_setup_empty_ssh_errors_report_exit_status_and_password_hint(self):
+        args = SimpleNamespace(config="unused", binaries="./pi-bin", arch="auto", bootstrap=True)
+        for code, stdout, expected in (
+                (5, "", "SSH password rejected"),
+                (6, "", "unknown SSH host key"),
+                (7, "", "changed SSH host key"),
+                (255, "", "no diagnostic output"),
+                (1, "remote diagnostic\n", "remote diagnostic")):
+            with self.subTest(code=code), \
+                 mock.patch.dict(lab.os.environ, {"RELAYD_SSH_PASSWORD": "test"}), \
+                 mock.patch.object(lab, "read_json", return_value=self.cfg), \
+                 mock.patch.object(lab, "ssh", side_effect=lab.subprocess.CalledProcessError(
+                     code, ["ssh"], output=stdout, stderr="")), \
+                 mock.patch.object(lab, "upload") as upload:
+                with self.assertRaises(RuntimeError) as caught:
+                    lab.setup(args)
+                self.assertIn(f"exit {code}", str(caught.exception))
+                self.assertIn(expected, str(caught.exception))
+                upload.assert_not_called()
+
     def test_key_login_still_works_without_password(self):
         with mock.patch.dict(lab.os.environ, {"RELAYD_SSH_USER": "tester"}, clear=True):
             command, _ = lab.connection(self.cfg["nodes"][0])
